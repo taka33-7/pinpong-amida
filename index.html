@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FUJIYAMAチーム決めアミだくじ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 背景アニメーション */
+        @keyframes float {
+            0% { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+            10% { opacity: 0.3; }
+            90% { opacity: 0.3; }
+            100% { transform: translate(100px, -100vh) rotate(360deg); opacity: 0; }
+        }
+        .ball {
+            position: fixed; bottom: -50px; background: #fff; border-radius: 50%;
+            pointer-events: none; z-index: -1; box-shadow: inset -2px -2px 5px rgba(0,0,0,0.2);
+        }
+        body { 
+            background-color: #065f46;
+            background-image: radial-gradient(circle at 50% 50%, #066d4f 0%, #064e3b 100%);
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            color: #f8fafc; overflow-x: hidden;
+        }
+        /* 富士山のシルエット */
+        .fuji-bg {
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 30vh;
+            background: linear-gradient(to top, #043d2e, transparent);
+            clip-path: polygon(0% 100%, 20% 100%, 50% 20%, 80% 100%, 100% 100%, 100% 0%, 0% 0%);
+            transform: scaleY(-1); z-index: -2; opacity: 0.4;
+        }
+        .canvas-container { 
+            overflow-x: auto; -webkit-overflow-scrolling: touch; 
+            background: rgba(255, 255, 255, 0.98); border: 8px solid #047857;
+            border-radius: 24px; padding: 15px; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.4);
+        }
+        canvas { display: block; cursor: pointer; margin: 0 auto; }
+        .card-glass {
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+            color: #1e293b; border: 1px solid rgba(255,255,255,0.3);
+        }
+        .ai-naming-loader { display: inline-flex; gap: 4px; }
+        .ai-naming-loader span {
+            width: 8px; height: 8px; background: #2563eb; border-radius: 50%;
+            animation: bounce 0.6s infinite alternate;
+        }
+        .ai-naming-loader span:nth-child(2) { animation-delay: 0.2s; }
+        .ai-naming-loader span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce { to { transform: translateY(-6px); opacity: 0.5; } }
+        
+        .loading-spinner {
+            border: 3px solid rgba(255,255,255,0.3); border-radius: 50%;
+            border-top: 3px solid #fff; width: 20px; height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .copy-success { background-color: #10b981 !important; }
+    </style>
+</head>
+<body class="min-h-screen pb-10">
+    <div id="ball-container"></div>
+    <div class="fuji-bg"></div>
+
+    <div id="app" class="max-w-md mx-auto p-4 relative z-10">
+        <!-- Header -->
+        <header class="text-center py-8">
+            <div class="inline-block relative">
+                <span class="absolute -top-6 -left-6 text-4xl transform -rotate-12">🗻</span>
+                <h1 class="text-4xl font-black italic tracking-tighter text-white drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)]">
+                    <span class="text-yellow-400">FUJIYAMA</span> チーム分け
+                </h1>
+                <span class="absolute -bottom-4 -right-6 text-3xl transform rotate-12">🏓</span>
+            </div>
+        </header>
+
+        <!-- View 1: 管理者セットアップ画面 -->
+        <div id="view-setup" class="card-glass p-8 rounded-[2rem] shadow-2xl space-y-6">
+            <div class="space-y-4">
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="bg-green-100 p-2 rounded-lg text-xl text-green-700 font-bold">📋</div>
+                    <h2 class="font-black text-gray-800 text-xl">大会作成</h2>
+                </div>
+                <div>
+                    <label class="block text-xs font-black text-gray-500 uppercase mb-1">大会名</label>
+                    <input type="text" id="input-tournament-name" placeholder="例：フジヤマ卓球親睦会" class="w-full border-2 border-gray-100 p-4 rounded-2xl outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all text-gray-700">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-black text-gray-500 uppercase mb-1">参加人数</label>
+                        <input type="number" id="input-total-players" value="4" min="2" max="20" class="w-full border-2 border-gray-100 p-4 rounded-2xl outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all text-gray-700">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-black text-gray-500 uppercase mb-1">チーム数</label>
+                        <select id="input-team-count" class="w-full border-2 border-gray-100 p-4 rounded-2xl outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all text-gray-700">
+                            <option value="2">2チーム</option>
+                            <option value="3">3チーム</option>
+                            <option value="4">4チーム</option>
+                            <option value="5">5チーム</option>
+                        </select>
+                    </div>
+                </div>
+                <button id="btn-create-room" class="w-full bg-gradient-to-br from-green-600 to-green-800 text-white font-black py-5 rounded-2xl shadow-xl hover:from-green-700 hover:to-green-900 transition-all transform active:scale-95 text-lg flex items-center justify-center gap-2">
+                    あみだくじを作成
+                </button>
+                <p id="setup-error" class="text-red-500 text-xs text-center hidden font-bold"></p>
+            </div>
+        </div>
+
+        <!-- View 1.5: 管理者専用 共有アドレス表示画面 -->
+        <div id="view-admin-share" class="hidden card-glass p-8 rounded-[2rem] shadow-2xl space-y-6 text-center border-t-8 border-green-500">
+            <div class="text-4xl">🚀</div>
+            <h2 class="font-black text-gray-800 text-xl">部屋が完成しました！</h2>
+            <p class="text-sm text-gray-600 px-4">以下のURLをコピーして<br>メンバーに教えてあげてください。</p>
+            
+            <div class="bg-gray-100 p-4 rounded-2xl space-y-3">
+                <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">招待用URL</p>
+                <div id="admin-share-url" class="text-xs font-mono text-gray-600 break-all bg-white p-3 rounded-xl border border-gray-200 min-h-[40px] flex items-center justify-center select-all"></div>
+                <button id="btn-copy-admin-url" class="w-full bg-green-600 text-white text-sm font-black py-3 rounded-xl shadow hover:bg-green-700 transition-all flex items-center justify-center gap-2">
+                    アドレスをコピーする
+                </button>
+            </div>
+
+            <div class="pt-2">
+                <button id="btn-go-to-game" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-blue-700 transition-all transform active:scale-95 text-md">
+                    あみだくじ会場へ進む
+                </button>
+            </div>
+            <p class="text-[10px] text-gray-400 italic">※メンバーがこのURLから参加できるようになります</p>
+        </div>
+
+        <!-- View 2: ゲーム画面 -->
+        <div id="view-game" class="hidden space-y-6">
+            <div id="game-header-info" class="bg-white/10 p-5 rounded-3xl border border-white/20 backdrop-blur-sm text-center">
+                <p id="display-tournament-name" class="font-black text-yellow-300 text-xl"></p>
+                <div class="flex items-center justify-center gap-2 mt-1">
+                    <p id="ai-slogan" class="text-xs text-blue-100 italic font-medium"></p>
+                    <button id="btn-tts-slogan" class="hidden text-yellow-400 hover:text-yellow-200 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="card-glass p-5 rounded-[2rem] shadow-2xl">
+                <div class="mb-4 text-center">
+                    <p id="status-text" class="text-sm font-black text-gray-700 animate-pulse">読み込み中...</p>
+                </div>
+                <div class="canvas-container">
+                    <canvas id="amidakuji-canvas"></canvas>
+                </div>
+
+                <div id="my-entry-form" class="hidden mt-6 bg-blue-50 p-6 rounded-3xl border-2 border-blue-200 space-y-4 shadow-inner">
+                    <p class="text-xs font-black text-blue-700 uppercase">選択中: <span id="selected-slot-num" class="text-lg"></span>番目</p>
+                    <input type="text" id="my-name" placeholder="名前を入力" class="w-full border-2 border-white p-4 rounded-2xl outline-none shadow-md focus:ring-4 focus:ring-blue-400/20 text-gray-800">
+                    <button id="btn-submit-entry" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-blue-700 transition-all">決定！</button>
+                </div>
+
+                <div id="waiting-area" class="hidden text-center py-8 bg-gray-100 rounded-[2rem] mt-6 border-2 border-dashed border-gray-200">
+                    <p class="text-[10px] text-gray-400 font-black tracking-widest mb-2">エントリー状況</p>
+                    <p id="players-count" class="text-4xl font-black text-green-700 mt-1">0 / 0</p>
+                </div>
+            </div>
+
+            <div id="results-area" class="hidden card-glass p-6 rounded-[2rem] shadow-2xl border-t-8 border-yellow-400">
+                <div class="flex flex-col items-center gap-2 mb-6 text-center">
+                    <h3 class="font-black text-gray-800 text-xl flex items-center gap-2">
+                        <span>🏆</span> RESULT <span>🏆</span>
+                    </h3>
+                    <div id="naming-status" class="hidden text-[11px] font-bold text-blue-600 italic flex items-center gap-2">
+                        AIが命名中...
+                        <div class="ai-naming-loader"><span></span><span></span><span></span></div>
+                    </div>
+                </div>
+                <div id="team-list" class="grid grid-cols-1 gap-4 mb-6"></div>
+                <div id="outlook-section" class="hidden mt-4 p-4 bg-yellow-50 rounded-2xl border border-yellow-200 shadow-inner">
+                    <p id="outlook-text" class="text-[12px] text-gray-700 leading-relaxed font-medium italic"></p>
+                </div>
+                <button id="btn-reset" class="hidden w-full text-gray-400 text-[11px] font-bold mt-10 py-4 border-t border-gray-200 tracking-widest uppercase">リセット (管理者)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div id="custom-modal" class="fixed inset-0 bg-black/70 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-[2.5rem] p-8 max-w-sm w-full text-center shadow-2xl border-4 border-green-600">
+            <p id="modal-message" class="text-gray-800 font-bold mb-8 leading-relaxed"></p>
+            <button id="modal-close" class="w-full bg-green-700 text-white font-black py-4 rounded-2xl shadow-lg">OK</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- 運用時設定 ---
+        const apiKey = ""; // ここにご自身の Gemini API キーを入力してください
+
+        // Modal Utility
+        const showModal = (msg) => {
+            document.getElementById('modal-message').innerText = msg;
+            document.getElementById('custom-modal').classList.replace('hidden', 'flex');
+        };
+        document.getElementById('modal-close').onclick = () => {
+            document.getElementById('custom-modal').classList.replace('flex', 'hidden');
+        };
+
+        // Ball Animation
+        const ballContainer = document.getElementById('ball-container');
+        setInterval(() => {
+            const ball = document.createElement('div');
+            ball.className = 'ball';
+            const size = Math.random() * 10 + 10;
+            ball.style.width = ball.style.height = `${size}px`;
+            ball.style.left = `${Math.random() * 100}vw`;
+            ball.style.animation = `float ${Math.random() * 3 + 2}s linear forwards`;
+            ballContainer.appendChild(ball);
+            setTimeout(() => ball.remove(), 5000);
+        }, 1000);
+
+        // Gemini API Helpers
+        const callGemini = async (prompt, systemInstruction = "", useJson = false) => {
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: systemInstruction }] }
+            };
+            if (useJson) payload.generationConfig = { responseMimeType: "application/json" };
+            const response = await fetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+            const data = await response.json();
+            return useJson ? JSON.parse(data.candidates[0].content.parts[0].text) : data.candidates[0].content.parts[0].text;
+        };
+
+        const callGeminiTTS = async (text) => {
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: `アナウンサー風に読み上げて: ${text}` }] }],
+                generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } } }
+            };
+            const response = await fetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+            const result = await response.json();
+            const audioData = result.candidates[0].content.parts[0].inlineData.data;
+            
+            // PCM to WAV conversion for playback
+            const binaryString = atob(audioData);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+            const pcmData = new Int16Array(bytes.buffer);
+            const wavHeader = new ArrayBuffer(44);
+            const view = new DataView(wavHeader);
+            const writeString = (offset, string) => { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); };
+            writeString(0, 'RIFF'); view.setUint32(4, 32 + pcmData.length * 2, true); writeString(8, 'WAVE');
+            writeString(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+            view.setUint32(24, 24000, true); view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+            writeString(36, 'data'); view.setUint32(40, pcmData.length * 2, true);
+            const blob = new Blob([wavHeader, pcmData], { type: 'audio/wav' });
+            new Audio(URL.createObjectURL(blob)).play();
+        };
+
+        // Firebase Initialization
+        const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'fujiyama-shared-v7';
+
+        let user = null;
+        let currentRoomId = null;
+        let roomData = null;
+        let selectedSlot = null;
+        let namingTriggered = false;
+        let unsubscribe = null;
+
+        const vSetup = document.getElementById('view-setup');
+        const vAdminShare = document.getElementById('view-admin-share');
+        const vGame = document.getElementById('view-game');
+        const canvas = document.getElementById('amidakuji-canvas');
+        const ctx = canvas.getContext('2d');
+        const statusText = document.getElementById('status-text');
+        const entryForm = document.getElementById('my-entry-form');
+        const waitingArea = document.getElementById('waiting-area');
+        const resultsArea = document.getElementById('results-area');
+        const adminShareUrl = document.getElementById('admin-share-url');
+
+        // URLロジック: blob:を除去し正規URLを推測
+        const getShareUrl = (roomId) => {
+            let base = window.location.href.split('?')[0].replace(/^blob:/, '');
+            // GitHub Pagesなどの場合、origin/pathnameを使用するのが確実
+            if (base.startsWith('http')) {
+                const u = new URL(base);
+                u.searchParams.set('room', roomId);
+                return u.toString();
+            }
+            return base + "?room=" + roomId;
+        };
+
+        onAuthStateChanged(auth, u => { 
+            user = u; 
+            if (u) {
+                const rId = new URLSearchParams(window.location.search).get('room');
+                if (rId) joinRoom(rId);
+                else {
+                    vSetup.classList.remove('hidden'); vGame.classList.add('hidden');
+                }
+            } 
+        });
+
+        const initAuth = async () => {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
+            else await signInAnonymously(auth);
+        };
+        initAuth();
+
+        const joinRoom = async (roomId) => {
+            if (!user) return;
+            currentRoomId = roomId;
+            if (unsubscribe) unsubscribe();
+            unsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), (docSnap) => {
+                if (!docSnap.exists()) return;
+                roomData = docSnap.data();
+                document.getElementById('display-tournament-name').innerText = roomData.tournamentName;
+                document.getElementById('ai-slogan').innerText = roomData.aiSlogan || "";
+                document.getElementById('btn-tts-slogan').classList.toggle('hidden', !roomData.aiSlogan);
+                if (roomData.matchOutlook) {
+                    document.getElementById('outlook-section').classList.remove('hidden');
+                    document.getElementById('outlook-text').innerText = roomData.matchOutlook;
+                }
+                const isAdmin = roomData.creatorUid === user.uid;
+                document.getElementById('btn-reset').classList.toggle('hidden', !isAdmin);
+                if (vGame.classList.contains('hidden') && vAdminShare.classList.contains('hidden')) {
+                    vSetup.classList.add('hidden'); vGame.classList.remove('hidden');
+                }
+                renderLobby();
+            });
+        };
+
+        document.getElementById('btn-create-room').onclick = async () => {
+            if (!user) return;
+            const btn = document.getElementById('btn-create-room');
+            btn.disabled = true; btn.innerHTML = `<div class="loading-spinner"></div>`;
+            const tName = document.getElementById('input-tournament-name').value.trim() || "FUJIYAMA卓球大会";
+            const total = parseInt(document.getElementById('input-total-players').value);
+            const teams = parseInt(document.getElementById('input-team-count').value);
+            const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+            const ladders = [];
+            for (let r = 0; r < 12; r++) {
+                for (let c = 0; c < total - 1; c++) {
+                    if (Math.random() > 0.6 && (c === 0 || !ladders.find(l => l.r === r && l.c === c - 1))) ladders.push({ r, c });
+                }
+            }
+            const resultPool = []; for (let i = 0; i < total; i++) resultPool.push(i % teams);
+            const shuffledResults = resultPool.sort(() => Math.random() - 0.5);
+            const newRoomData = {
+                roomId, tournamentName: tName, totalPlayers: total, teamCount: teams,
+                ladders, results: shuffledResults, players: {}, teamNames: {}, 
+                creatorUid: user.uid, createdAt: Date.now(), isNaming: false
+            };
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), newRoomData);
+                currentRoomId = roomId;
+                vSetup.classList.add('hidden'); vAdminShare.classList.remove('hidden');
+                adminShareUrl.innerText = getShareUrl(roomId);
+                callGemini(`「${tName}」に向けた富士山×卓球キャッチコピーを1つ、20文字以内に出力して。`).then(s => {
+                    updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId), { aiSlogan: s });
+                });
+            } catch (err) { btn.disabled = false; btn.innerHTML = "あみだくじを作成"; }
+        };
+
+        document.getElementById('btn-copy-admin-url').onclick = () => {
+            const dummy = document.createElement('textarea');
+            document.body.appendChild(dummy); dummy.value = adminShareUrl.innerText; dummy.select();
+            document.execCommand('copy'); document.body.removeChild(dummy);
+            const btn = document.getElementById('btn-copy-admin-url');
+            btn.innerText = "コピー完了！"; btn.classList.add('copy-success');
+            setTimeout(() => { btn.innerText = "URLをコピーする"; btn.classList.remove('copy-success'); }, 2000);
+        };
+
+        document.getElementById('btn-go-to-game').onclick = () => {
+            vAdminShare.classList.add('hidden'); vGame.classList.remove('hidden');
+            joinRoom(currentRoomId);
+        };
+
+        const renderLobby = async () => {
+            const total = roomData.totalPlayers;
+            const playerEntries = Object.entries(roomData.players);
+            const playerCount = playerEntries.length;
+            const spacing = Math.min(80, (canvas.parentElement.clientWidth - 80) / (total - 1 || 1));
+            const padding = 40;
+            canvas.width = (total - 1) * spacing + padding * 2; canvas.height = 420;
+            drawAmidakuji(spacing, padding);
+            if (playerEntries.find(([idx, p]) => p.uid === user.uid)) {
+                entryForm.classList.add('hidden'); waitingArea.classList.remove('hidden');
+                document.getElementById('players-count').innerText = `${playerCount} / ${total}`;
+                statusText.innerText = "全員が揃うまでしばらくお待ちください";
+            } else {
+                statusText.innerText = "空いている縦線をタップ！"; waitingArea.classList.add('hidden');
+            }
+            if (playerCount >= total) {
+                statusText.innerText = "チーム分け完了！"; statusText.classList.remove('animate-pulse');
+                waitingArea.classList.add('hidden'); resultsArea.classList.remove('hidden');
+                if (!namingTriggered && (!roomData.teamNames || Object.keys(roomData.teamNames).length === 0) && !roomData.isNaming) {
+                    namingTriggered = true;
+                    if (roomData.creatorUid === user.uid) autoGenerateTeamNames();
+                }
+                document.getElementById('naming-status').style.display = roomData.isNaming ? 'flex' : 'none';
+                renderResults(); drawAmidakuji(spacing, padding);
+            }
+        };
+
+        const autoGenerateTeamNames = async () => {
+            try {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId), { isNaming: true });
+                const prompt = `大会「${roomData.tournamentName}」と「富士山」そして「卓球」を掛け合わせた面白いチーム名を${roomData.teamCount}つ作成してください。返り値はJSON: { "0": { "full": "名称", "short": "略称", "cry": "雄叫び" }, ... }。`;
+                const names = await callGemini(prompt, "Answer only with JSON.", true);
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId), { teamNames: names, isNaming: false });
+                const teamsStr = Object.values(names).map(t => t.full).join('、');
+                const outlook = await callGemini(`大会「${roomData.tournamentName}」の展望を実況風に100文字程度で語って。チーム：${teamsStr}`);
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId), { matchOutlook: outlook });
+            } catch (e) { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId), { isNaming: false }); }
+        };
+
+        const drawAmidakuji = (spacing, padding) => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const startY = 60; const h = 300; const rowStep = h / 13;
+            const completed = Object.keys(roomData.players).length >= roomData.totalPlayers;
+            for (let i = 0; i < roomData.totalPlayers; i++) {
+                const x = padding + i * spacing; const p = roomData.players[i];
+                ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, startY + h); ctx.stroke();
+                if (p) {
+                    ctx.fillStyle = p.uid === user.uid ? '#2563eb' : '#1e293b'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+                    ctx.fillText(p.name, x, startY - 25);
+                    ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.arc(x, startY - 12, 5, 0, Math.PI*2); ctx.fill();
+                } else { ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.arc(x, startY - 20, 8, 0, Math.PI * 2); ctx.fill(); }
+                if (completed) {
+                    const teamIdx = roomData.results[i];
+                    const tName = roomData.teamNames?.[teamIdx] ? roomData.teamNames[teamIdx].short : `チーム${String.fromCharCode(65 + teamIdx)}`;
+                    ctx.fillStyle = '#059669'; ctx.font = 'bold 11px sans-serif'; ctx.fillText(tName, x, startY + h + 35);
+                }
+            }
+            if (completed) {
+                ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 3;
+                roomData.ladders.forEach(l => {
+                    const x1 = padding + l.c * spacing; const x2 = x1 + spacing;
+                    const y = startY + (l.r + 1) * rowStep;
+                    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
+                });
+            }
+        };
+
+        const renderResults = () => {
+            const teamList = document.getElementById('team-list'); teamList.innerHTML = ''; const grouped = {};
+            for (let i = 0; i < roomData.totalPlayers; i++) {
+                let col = i;
+                for (let r = 0; r < 12; r++) {
+                    if (roomData.ladders.find(l => l.r === r && l.c === col - 1)) col--;
+                    else if (roomData.ladders.find(l => l.r === r && l.c === col)) col++;
+                }
+                const tid = roomData.results[col]; if (!grouped[tid]) grouped[tid] = []; grouped[tid].push(roomData.players[i].name);
+            }
+            Object.keys(grouped).sort().forEach(tId => {
+                const info = roomData.teamNames?.[tId] || { full: `チーム ${String.fromCharCode(65 + parseInt(tId))}`, cry: "頂上を目指せ！" };
+                const card = document.createElement('div'); card.className = "p-5 bg-white border-2 border-gray-100 rounded-[1.5rem] shadow-sm mb-2 text-left";
+                card.innerHTML = `<div class="flex justify-between items-start mb-2"><h4 class="font-black text-gray-800 text-sm italic underline decoration-blue-500 decoration-4">${info.full}</h4><span class="text-[9px] text-orange-500 font-bold italic">"${info.cry}"</span></div><div class="flex flex-wrap gap-2">${grouped[tId].map(n => `<span class="bg-blue-50 text-blue-700 text-[11px] font-bold px-3 py-1 rounded-lg">${n}</span>`).join('')}</div>`;
+                teamList.appendChild(card);
+            });
+        };
+
+        canvas.onclick = (e) => {
+            if (Object.keys(roomData.players).length >= roomData.totalPlayers) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const spacing = (canvas.width - 80) / (roomData.totalPlayers - 1 || 1);
+            for (let i = 0; i < roomData.totalPlayers; i++) {
+                if (Math.abs(x - (40 + i * spacing)) < 30) {
+                    if (roomData.players[i]) return;
+                    selectedSlot = i; document.getElementById('selected-slot-num').innerText = i + 1;
+                    entryForm.classList.remove('hidden'); entryForm.scrollIntoView({ behavior: 'smooth' });
+                    break;
+                }
+            }
+        };
+
+        document.getElementById('btn-submit-entry').onclick = async () => {
+            const name = document.getElementById('my-name').value.trim();
+            if (!name || selectedSlot === null) return;
+            const update = {}; update[`players.${selectedSlot}`] = { name, uid: user.uid };
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId), update);
+            entryForm.classList.add('hidden');
+        };
+
+        document.getElementById('btn-tts-slogan').onclick = () => callGeminiTTS(roomData.aiSlogan);
+        document.getElementById('btn-reset').onclick = () => { if(confirm("管理者権限：データをリセットしますか？")) { location.href = window.location.pathname; }};
+
+    </script>
+</body>
+</html>
